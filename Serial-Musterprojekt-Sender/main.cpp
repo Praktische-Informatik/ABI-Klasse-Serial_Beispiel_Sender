@@ -1,4 +1,4 @@
-#include "Serial/Serial.h" // Beachte! Die Klasse Serial.h ist im Ordner Serial -> Siehe VS Projekt Ordner.
+#include "Serial/Serial.h" // Beachte! Die Klasse Serial.h ist im Ordner Serial/Serial -> Siehe VS Projekt Ordner.
 #include <iostream>
 using namespace std;
 
