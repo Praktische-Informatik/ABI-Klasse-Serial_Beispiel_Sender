@@ -10,6 +10,9 @@ char SOH = 0x01; // Start of Heading (Start eines Blockes)
 char EOT = 0x04;  // End of Transmission (Ende der Übertragung);
 char CAN = 0x18;  //Cancel (Abbruch der Übertragung);Medium
 
+/************
+* SENDER
+*************/
 
 int main()
 {
@@ -18,7 +21,7 @@ int main()
 	cout << "COM Port Nummer: ";
 
 	//cin >> port_nr;
-	port_nr = "2";
+	port_nr = "1";
 
 	string serieller_port("COM");
 	serieller_port += port_nr;
