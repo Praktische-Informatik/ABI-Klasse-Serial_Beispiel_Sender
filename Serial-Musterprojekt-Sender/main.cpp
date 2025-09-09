@@ -59,6 +59,7 @@ int main()
         com->write("Ball");
         com->write("Ball\n"); // Viele Gegenstellen (und unser readLine) erwarten '\n' als Zeilenende.
 
+        cout << "Sende Hallo" << endl;
         // Senden eines Puffers inkl. Nullbyte:
         char buffer[6] = "Hallo";  // 5 Zeichen + '\0'
         com->write(buffer, sizeof(buffer));
