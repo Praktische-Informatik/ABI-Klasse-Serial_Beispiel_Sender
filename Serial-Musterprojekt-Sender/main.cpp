@@ -1,59 +1,70 @@
 /*
-Es wird ein virtueles Port Tool benoetigt! Zum Beispiel HHD Virtual Serial Port Tool
+  SENDER (Transmitter)
+
+  Voraussetzungen:
+    - Ein virtuelles COM-Port-Paar (z. B. mit HHD Virtual Serial Port Tool).
+      Beispiel: COM1 <-> COM2, wobei der SENDER auf COM1, der EMPFÄNGER auf COM2 liegt.
+
+  Ablauf:
+    1) SENDER öffnet seinen Port.
+    2) SENDER wartet, bis EMPFÄNGER DTR=true setzt (als DSR sichtbar).
+    3) SENDER sendet einzelne Zeichen, Strings und einen Puffer.
+
+  Hinweise:
+    - DSR wird per Polling abgefragt; das ist nicht blockierend.
+    - Write-Aufrufe können kurz blockieren (Timeout z. B. 100 ms in unserer Serial.cpp).
 */
 
-#include "Serial/Serial.h" // Beachte! Die Klasse Serial.h ist im Ordner Serial/Serial -> Siehe VS Projekt Ordner.
+#include "Serial/Serial.h"  // Serial-Klasse liegt im Ordner Serial/Serial  (siehe VS-Projektordner)
 #include <iostream>
 using namespace std;
 
-// Übertragungs-Steuerzeichen
-char ETX = 0x03; // End of Text (Ende eines Datenblocks);
-char ACK = 0x06; // Acknowledge (fehlerfreie Übertragung);
-char NAK = 0x15; // No Acknowledge (fehlerhafte Übertragung);
+// Übertragungs-Steuerzeichen (für spätere Protokoll-Erweiterungen nützlich)
+char ETX = 0x03; // End of Text (Ende eines Datenblocks)
+char ACK = 0x06; // Acknowledge (fehlerfreie Übertragung)
+char NAK = 0x15; // No Acknowledge (fehlerhafte Übertragung)
 char SOH = 0x01; // Start of Heading (Start eines Blockes)
-char EOT = 0x04;  // End of Transmission (Ende der Übertragung);
-char CAN = 0x18;  //Cancel (Abbruch der Übertragung);Medium
-
-/************
-* SENDER
-*************/
+char EOT = 0x04; // End of Transmission (Ende der Übertragung)
+char CAN = 0x18; // Cancel (Abbruch der Übertragung)
 
 int main()
 {
+    // COM-Port-Nummer: hier zur Demo fest verdrahtet (statt cin >> port_nr)
+    string port_nr = "1";   // Beispiel: Sender auf COM1
+    cout << "COM Port Nummer (Sender): " << port_nr << endl;
 
-	string port_nr = "";
-	cout << "COM Port Nummer: ";
+    // "COM" + Nummer ergibt den Portnamen (z. B. "COM1")
+    string serieller_port("COM");
+    serieller_port += port_nr;
 
-	//cin >> port_nr;
-	port_nr = "1";
+    Serial* com = new Serial((string)serieller_port, 9600, 8, ONESTOPBIT, NOPARITY);
 
-	string serieller_port("COM");
-	serieller_port += port_nr;
-	Serial* com2 = new Serial((string)serieller_port, 9600, 8, NOPARITY, ONESTOPBIT);
+    if (com->open()) {
+        cout << "Schnittstelle Sender geoeffnet" << endl;
 
-	if (com2->open()) {
-		cout << "Schnittstelle Sender geoeffnet" << endl;
+        // Prüfen, ob der Empfänger bereit ist (DTR=true -> DSR=true).
+        // Standleitungen sind nicht blockierend; daher "Warte"-Schleife:
+        bool steuerleitung_DTR_to_DSR = false;
+        do {
+            steuerleitung_DTR_to_DSR = com->isDSR();
+            cout << "DSR empfaengt (Empfaenger bereit?): " << steuerleitung_DTR_to_DSR << endl;
+            Sleep(10);  // warten für 10 ms
+        } while (!steuerleitung_DTR_to_DSR);
 
-		// Ist der Empfaenger gestartet? 
-		// Um das sicherzustellen, wird eine Schleife benötigt, die auf der Steuerleitung horcht, ob ein true gesendet wird. 
-		bool steuerleitung_DTR_to_DSR = true;
-		do {
-			steuerleitung_DTR_to_DSR = com2->isDSR(); // Stuerleitungen sind nicht blockierend, d.h. eine if-Anweisung wie bei read() geht hier nicht.
-			cout << "DSR empfaengt: " << steuerleitung_DTR_to_DSR << endl;
-		} while (!steuerleitung_DTR_to_DSR);
+        // --- Sende-Beispiele -----------------------------------------------
+        cout << "Sende ein 'A'" << endl;
+        com->write('A'); // wird binär gesendet: 0b0100'0001
 
+        cout << "Sende die Zeichenkette: Ball (2x, beim zweiten Mal mit Newline)" << endl;
+        com->write("Ball");
+        com->write("Ball\n"); // Viele Gegenstellen (und unser readLine) erwarten '\n' als Zeilenende.
 
-		cout << "Sende ein 'A'" << endl;
-		com2->write('A'); // wird binar gesendet >> 0100 0001
+        // Senden eines Puffers inkl. Nullbyte:
+        char buffer[6] = "Hallo";  // 5 Zeichen + '\0'
+        com->write(buffer, sizeof(buffer));
+        // -------------------------------------------------------------------
+    }
 
-		cout << "Die Zeichenkette: Ball wird 2x gesendet." << endl;
-		com2->write("Ball");
-		com2->write("Ball\n"); // Ohne Zeilenumbruch funktioniert es nicht.
-
-		char buffer[6] = "Hallo";
-		com2->write(buffer, sizeof(buffer));
-	}
-
-		com2->close();
-	return 0;
+    com->close();
+    return 0;
 }

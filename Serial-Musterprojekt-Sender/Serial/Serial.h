@@ -1,4 +1,4 @@
-// Version 09.2025 – überarbeitet mit erklärenden Kommentaren
+// Version 09.2025 – klassische, blockierende Lese-Variante
 #pragma once
 
 #include <iostream>
@@ -11,6 +11,11 @@ using namespace std;
 /**
  * @brief Einfache Wrapper-Klasse für eine serielle Schnittstelle unter Windows.
  *
+ * Klassisches, blockierendes Leseverhalten:
+ *  - read() wartet, bis mindestens 1 Byte vorliegt (oder Fehler).
+ *  - readLine() wartet, bis ein '\n' empfangen wurde.
+ *  - read(buf,n) liest mindestens 1 Byte; danach alle sofort verfügbaren Bytes.
+ * 
  * Bietet Methoden zum Öffnen/Schließen, Senden/Empfangen von Daten
  * sowie zur Steuerung von Handshake-Signalen (RTS/DTR/CTS/DSR).
  *
@@ -18,7 +23,8 @@ using namespace std;
  *   Serial ser("COM3", 9600, 8, ONESTOPBIT, NOPARITY);
  *   if (ser.open()) {
  *       ser.write("Hello World\n");
- *       string line = ser.readLine();
+ *       int b = ser.read();         // blockiert bis 1 Byte kommt
+ *       string line = ser.readLine(); // blockiert bis '\n'
  *       ser.close();
  *   }
  */
@@ -64,25 +70,27 @@ public:
 	 */
 	int dataAvailable();
 
-	// -------- Leseoperationen --------
+	// -------- Leseoperationen (blockierend) --------
 
 	/**
-	 * @brief Liest ein einzelnes Byte.
-	 * @return Wert 0–255; -1 wenn nichts verfügbar oder Port nicht offen.
-	 * @note Dank gesetzter Timeouts blockiert der Aufruf nicht.
+	 * @brief Liest ein einzelnes Byte (blockierend).
+	 * @return Wert 0–255 bei Erfolg; -1 nur bei Fehler oder wenn Port nicht offen ist.
+	 * @note Wartet, bis mindestens 1 Byte empfangen wurde.
 	 */
 	int read();
 
 	/**
-	 * @brief Liest bis zu bufSize Bytes in den Puffer.
-	 * @return Anzahl tatsächlich gelesener Bytes (0..bufSize).
+	 * @brief Liest bis zu bufSize Bytes.
+	 * @return Anzahl tatsächlich gelesener Bytes (>=1 bei Erfolg, 0 bei Fehler/geschlossenem Port).
+	 * @note Liest mindestens 1 Byte (blockierend). Danach werden alle sofort verfügbaren Bytes
+	 *       ohne weiteres Warten mitgenommen (bis bufSize erreicht ist).
 	 */
 	int read(char* buffer, int bufSize);
 
 	/**
-	 * @brief Liest Text bis zum Linefeed ('\n').
-	 * @return Empfangene Zeichenkette (ohne '\n').
-	 * @note Gibt zurück, was bisher gelesen wurde, falls noch kein LF empfangen.
+	 * @brief Liest Text bis zum Linefeed ('\n') (blockierend).
+	 * @return Empfangene Zeichenkette ohne '\n'.
+	 * @note Wartet, bis ein Newline empfangen wurde (klassisches Verhalten).
 	 */
 	string readLine();
 

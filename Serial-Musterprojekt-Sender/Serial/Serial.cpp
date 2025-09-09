@@ -4,9 +4,8 @@
       - Unicode-Zeichensatz (Standard, nutzt CreateFileW)
       - Multi-Byte-Zeichensatz (ANSI, nutzt CreateFileA)
 
-  Diese Klasse nutzt std::string (ANSI), daher kann Multi-Byte oft einfacher sein.
-  Funktioniert aber auch mit Unicode, da Visual Studio implizit konvertiert.
-
+  Diese Klasse nutzt std::string (ANSI), funktioniert aber auch mit Unicode
+  (Visual Studio konvertiert automatisch).
   Empfohlen: Plattform "x64".
 */
 
@@ -38,7 +37,8 @@ Serial::~Serial()
 bool Serial::open()
 {
     // COM-Port öffnen (synchron, ohne Overlapped I/O)
-    handle = CreateFile(portName.c_str(),
+    handle = CreateFile(
+        portName.c_str(),
         GENERIC_READ | GENERIC_WRITE,
         0,                // kein Sharing
         nullptr,
@@ -69,15 +69,16 @@ bool Serial::open()
         return FALSE;
     }
 
-    // --- Wichtiger Teil: Timeouts setzen ------------------------
-    // Non-blocking Verhalten: ReadFile() gibt sofort zurück,
-    // auch wenn keine Daten da sind (dwRead==0).
+    // --- Klassisch/blockierend: ReadFile wartet, bis Daten anliegen ----------
+    // Diese Einstellung lässt ReadFile() so lange warten, bis die angeforderte
+    // Byte-Anzahl geliefert wurde. Wir lesen in unseren Methoden so, dass
+    // mindestens 1 Byte abgewartet wird.
     COMMTIMEOUTS to{};
-    to.ReadIntervalTimeout = MAXDWORD;
+    to.ReadIntervalTimeout = 0;
     to.ReadTotalTimeoutMultiplier = 0;
-    to.ReadTotalTimeoutConstant = 0;
+    to.ReadTotalTimeoutConstant = 0;   // 0 => blockiert (kein globales Read-Timeout)
 
-    // Schreiben darf kurz blockieren, max 100 ms
+    // Schreiben darf kurz blockieren, aber nicht ewig:
     to.WriteTotalTimeoutMultiplier = 0;
     to.WriteTotalTimeoutConstant = 100;
 
@@ -85,7 +86,7 @@ bool Serial::open()
         close();
         return FALSE;
     }
-    // ------------------------------------------------------------
+    // -------------------------------------------------------------------------
 
     return TRUE;
 }
@@ -147,33 +148,47 @@ int Serial::read()
     DWORD dwRead = 0;
     unsigned char chRead = 0;
 
-    // Durch Timeouts sofortige Rückgabe: -1 wenn nichts da
+    // Blockiert, bis 1 Byte gelesen wurde (oder Fehler)
     if (!ReadFile(handle, &chRead, 1, &dwRead, nullptr))
-        return -1; // Fehler -> wie "nichts gelesen"
+        return -1; // I/O-Fehler
 
-    if (dwRead == 0)
-        return -1; // aktuell kein Byte verfügbar
+    if (dwRead != 1)
+        return -1; // sollte bei blockierenden Timeouts nicht passieren
 
     return (int)chRead;
 }
 
 int Serial::read(char* buffer, int bufSize)
 {
-    if (handle == INVALID_HANDLE_VALUE)
+    if (handle == INVALID_HANDLE_VALUE || buffer == nullptr || bufSize <= 0)
         return 0;
 
     DWORD bytesRead = 0;
     int i = 0;
 
+    // 1) Mindestens 1 Byte lesen (blockierend)
+    if (!ReadFile(handle, &buffer[i], 1, &bytesRead, nullptr))
+        return 0;                   // I/O-Fehler
+    if (bytesRead != 1)
+        return 0;                   // sollte nicht passieren (blockierend)
+
+    i += 1;
+
+    // 2) Jetzt alle SOFORT verfügbaren Bytes ohne weiteres Warten „mitnehmen“
+    //    (Nur so viele anfordern, wie im Treiberpuffer gemeldet werden.)
     while (i < bufSize) {
-        char ch;
-        if (!ReadFile(handle, &ch, 1, &bytesRead, nullptr))
-            break;            // Fehler
-        if (bytesRead != 1)
-            break;            // nichts mehr gelesen
-        buffer[i++] = ch;
+        int avail = dataAvailable();
+        if (avail <= 0) break;
+
+        int want = min(avail, bufSize - i);
+        DWORD got = 0;
+        if (!ReadFile(handle, &buffer[i], (DWORD)want, &got, nullptr) || got == 0)
+            break;
+
+        i += (int)got;
     }
-    return i;
+
+    return i;  // >=1
 }
 
 string Serial::readLine()
@@ -184,10 +199,11 @@ string Serial::readLine()
     if (handle == INVALID_HANDLE_VALUE)
         return result;
 
+    // Klassisch: warte bis '\n' kommt
     while (true) {
-        int ch = read();
+        int ch = read();            // blockiert bis 1 Byte
         if (ch < 0) {
-            // kein Byte verfügbar -> bisherige Zeichen zurückgeben
+            // Fehler -> bisheriges Ergebnis zurückgeben
             return result;
         }
         if ((unsigned char)ch == LF) {
@@ -196,9 +212,10 @@ string Serial::readLine()
         }
         result.push_back((char)ch);
 
-        // Sicherheitslimit gegen endlose Zeilen
-        if (result.size() > 4096)
+        // Schutz gegen unbeabsichtigt „endlose“ Zeilen
+        if (result.size() > 1 << 20) { // ~1 MB
             return result;
+        }
     }
 }
 
