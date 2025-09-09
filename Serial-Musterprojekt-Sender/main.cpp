@@ -1,4 +1,8 @@
-#include "Serial/Serial.h" // Beachte! Die Klasse Serial.h ist im Ordner Serial -> Siehe VS Projekt Ordner.
+/*
+Es wird ein virtueles Port Tool benoetigt! Zum Beispiel HHD Virtual Serial Port Tool
+*/
+
+#include "Serial/Serial.h" // Beachte! Die Klasse Serial.h ist im Ordner Serial/Serial -> Siehe VS Projekt Ordner.
 #include <iostream>
 using namespace std;
 
