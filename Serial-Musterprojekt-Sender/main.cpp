@@ -30,42 +30,42 @@ char CAN = 0x18; // Cancel (Abbruch der Übertragung)
 int main()
 {
     // COM-Port-Nummer: hier zur Demo fest verdrahtet (statt cin >> port_nr)
-    string port_nr = "1";   // Beispiel: Sender auf COM1
-    cout << "COM Port Nummer (Sender): " << port_nr << endl;
+    string portNr = "1";;   // Beispiel: Empfänger auf COM1
+    //cin >> portNr;
+    cout << "COM Port Nummer (Empfaenger): " << portNr << endl;
 
     // "COM" + Nummer ergibt den Portnamen (z. B. "COM1")
-    string serieller_port("COM");
-    serieller_port += port_nr;
+    string port = "COM" + portNr;
 
-    Serial* com = new Serial((string)serieller_port, 9600, 8, ONESTOPBIT, NOPARITY);
+    Serial com(port, 9600, 8, ONESTOPBIT, NOPARITY);
 
-    if (com->open()) {
+    if (com.open()) {
         cout << "Schnittstelle Sender geoeffnet" << endl;
 
         // Prüfen, ob der Empfänger bereit ist (DTR=true -> DSR=true).
         // Standleitungen sind nicht blockierend; daher "Warte"-Schleife:
         bool steuerleitung_DTR_to_DSR = false;
         do {
-            steuerleitung_DTR_to_DSR = com->isDSR();
+            steuerleitung_DTR_to_DSR = com.isDSR();
             cout << "DSR empfaengt (Empfaenger bereit?): " << steuerleitung_DTR_to_DSR << endl;
             Sleep(10);  // warten für 10 ms
         } while (!steuerleitung_DTR_to_DSR);
 
         // --- Sende-Beispiele -----------------------------------------------
         cout << "Sende ein 'A'" << endl;
-        com->write('A'); // wird binär gesendet: 0b0100'0001
+        com.write('A'); // wird binär gesendet: 0b0100'0001
 
         cout << "Sende die Zeichenkette: Ball (2x, beim zweiten Mal mit Newline)" << endl;
-        com->write("Ball");
-        com->write("Ball\n"); // Viele Gegenstellen (und unser readLine) erwarten '\n' als Zeilenende.
+        com.write("Ball");
+        com.write("Ball\n"); // Viele Gegenstellen (und unser readLine) erwarten '\n' als Zeilenende.
 
         cout << "Sende Hallo" << endl;
         // Senden eines Puffers inkl. Nullbyte:
         char buffer[6] = "Hallo";  // 5 Zeichen + '\0'
-        com->write(buffer, sizeof(buffer));
+        com.write(buffer, sizeof(buffer));
         // -------------------------------------------------------------------
     }
 
-    com->close();
+    com.close();
     return 0;
 }
