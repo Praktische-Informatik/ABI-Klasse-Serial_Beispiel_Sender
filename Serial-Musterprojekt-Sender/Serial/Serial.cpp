@@ -1,12 +1,9 @@
+// Version 24.09.2025 - Schwaiger
 /*
   Hinweis zu Zeichensatz-Einstellungen (Visual Studio):
-    Projekt > Eigenschaften > Konfigurationseigenschaften > Erweitert > Zeichensatz
-      - Unicode-Zeichensatz (Standard, nutzt CreateFileW)
-      - Multi-Byte-Zeichensatz (ANSI, nutzt CreateFileA)
-
-  Diese Klasse nutzt std::string (ANSI), funktioniert aber auch mit Unicode
-  (Visual Studio konvertiert automatisch).
-  Empfohlen: Plattform "x64".
+    Diese einfache Variante nutzt std::string (ANSI) und CreateFileA.
+    Für den Unterricht ausreichend und übersichtlich.
+    Empfohlen: Plattform "x64".
 */
 
 #include "Serial.h"
@@ -37,7 +34,7 @@ Serial::~Serial()
 bool Serial::open()
 {
     // COM-Port öffnen (synchron, ohne Overlapped I/O)
-    handle = CreateFile(
+    handle = CreateFileA(
         portName.c_str(),
         GENERIC_READ | GENERIC_WRITE,
         0,                // kein Sharing
@@ -47,7 +44,7 @@ bool Serial::open()
         nullptr);
 
     if (handle == INVALID_HANDLE_VALUE)
-        return FALSE;
+        return false;
 
     // Port-Parameter holen und anpassen
     DCB dcb{};
@@ -55,7 +52,7 @@ bool Serial::open()
 
     if (!GetCommState(handle, &dcb)) {
         close();
-        return FALSE;
+        return false;
     }
 
     dcb.BaudRate = baudrate;
@@ -66,32 +63,26 @@ bool Serial::open()
 
     if (!SetCommState(handle, &dcb)) {
         close();
-        return FALSE;
+        return false;
     }
 
-    // --- Klassisch/blockierend: ReadFile wartet, bis Daten anliegen ----------
-    // Diese Einstellung lässt ReadFile() so lange warten, bis die angeforderte
-    // Byte-Anzahl geliefert wurde. Wir lesen in unseren Methoden so, dass
-    // mindestens 1 Byte abgewartet wird.
+    // Klassisch/blockierend lesen (wie im Dokument: read() wartet)
     COMMTIMEOUTS to{};
     to.ReadIntervalTimeout = 0;
     to.ReadTotalTimeoutMultiplier = 0;
-    to.ReadTotalTimeoutConstant = 0;   // 0 => blockiert (kein globales Read-Timeout)
-
-    // Schreiben darf kurz blockieren, aber nicht ewig:
+    to.ReadTotalTimeoutConstant = 0;   // 0 => blockiert
     to.WriteTotalTimeoutMultiplier = 0;
-    to.WriteTotalTimeoutConstant = 100;
+    to.WriteTotalTimeoutConstant = 100; // Schreiben darf kurz blockieren
 
     if (!SetCommTimeouts(handle, &to)) {
         close();
-        return FALSE;
+        return false;
     }
-    // -------------------------------------------------------------------------
 
-    return TRUE;
+    return true;
 }
 
-void Serial::close(void)
+void Serial::close()
 {
     if (handle != INVALID_HANDLE_VALUE) {
         CloseHandle(handle);
@@ -105,14 +96,14 @@ void Serial::close(void)
 
 int Serial::dataAvailable()
 {
-    COMSTAT comStat;
-    DWORD errors;
+    COMSTAT comStat{};
+    DWORD errors = 0;
 
-    if (handle != INVALID_HANDLE_VALUE)
+    if (handle != INVALID_HANDLE_VALUE) {
         if (ClearCommError(handle, &errors, &comStat))
             return (int)comStat.cbInQue;
-
-    return 0;
+    }
+    return 0; // nicht blockierend; 0 wenn nichts/offen?
 }
 
 void Serial::write(int value)
@@ -124,16 +115,17 @@ void Serial::write(int value)
     }
 }
 
-void Serial::write(const char* buffer, int bytesToWrite)
+void Serial::write(const char* b, int len)
 {
-    if (handle != INVALID_HANDLE_VALUE) {
+    if (handle != INVALID_HANDLE_VALUE && b != nullptr && len > 0) {
         DWORD bytesWritten = 0;
-        WriteFile(handle, buffer, bytesToWrite, &bytesWritten, nullptr);
+        WriteFile(handle, b, (DWORD)len, &bytesWritten, nullptr);
     }
 }
 
 void Serial::write(string s)
 {
+    // Wichtig: KEIN automatisches '\n' – das fordert das Dokument als Caller-Pflicht.
     if (handle != INVALID_HANDLE_VALUE) {
         DWORD bytesWritten = 0;
         WriteFile(handle, s.c_str(), (DWORD)s.length(), &bytesWritten, nullptr);
@@ -143,68 +135,68 @@ void Serial::write(string s)
 int Serial::read()
 {
     if (handle == INVALID_HANDLE_VALUE)
-        return -1;
+        return -1; // Dokument: -1 bei „nicht geöffnet“
 
     DWORD dwRead = 0;
     unsigned char chRead = 0;
 
     // Blockiert, bis 1 Byte gelesen wurde (oder Fehler)
     if (!ReadFile(handle, &chRead, 1, &dwRead, nullptr))
-        return -1; // I/O-Fehler
+        return -1; // I/O-Fehler wie „keine Daten“/Abbruch -> -1
 
     if (dwRead != 1)
         return -1; // sollte bei blockierenden Timeouts nicht passieren
 
-    return (int)chRead;
+    return (int)chRead; // 0..255
 }
 
-int Serial::read(char* buffer, int bufSize)
+int Serial::read(char* b, int len)
 {
-    if (handle == INVALID_HANDLE_VALUE || buffer == nullptr || bufSize <= 0)
-        return 0;
+    // Dokument: -1, wenn „keine Bytes verfügbar“ ODER Port nicht geöffnet.
+    if (handle == INVALID_HANDLE_VALUE || b == nullptr || len <= 0)
+        return -1;
 
-    DWORD bytesRead = 0;
+    DWORD got = 0;
     int i = 0;
 
     // 1) Mindestens 1 Byte lesen (blockierend)
-    if (!ReadFile(handle, &buffer[i], 1, &bytesRead, nullptr))
-        return 0;                   // I/O-Fehler
-    if (bytesRead != 1)
-        return 0;                   // sollte nicht passieren (blockierend)
+    if (!ReadFile(handle, &b[i], 1, &got, nullptr) || got != 1)
+        return -1; // -1 wie im Dokument
 
     i += 1;
 
-    // 2) Jetzt alle SOFORT verfügbaren Bytes ohne weiteres Warten „mitnehmen“
-    //    (Nur so viele anfordern, wie im Treiberpuffer gemeldet werden.)
-    while (i < bufSize) {
+    // 2) Alle SOFORT verfügbaren Bytes (ohne weiteres Blockieren) nachziehen
+    while (i < len) {
         int avail = dataAvailable();
         if (avail <= 0) break;
 
-        int want = min(avail, bufSize - i);
-        DWORD got = 0;
-        if (!ReadFile(handle, &buffer[i], (DWORD)want, &got, nullptr) || got == 0)
+        int want = std::min(avail, len - i);
+        DWORD gotNow = 0;
+        if (!ReadFile(handle, &b[i], (DWORD)want, &gotNow, nullptr) || gotNow == 0)
             break;
 
-        i += (int)got;
+        i += (int)gotNow;
     }
 
-    return i;  // >=1
+    return i;  // >= 1
 }
 
 string Serial::readLine()
 {
-    const unsigned char LF = 0x0A; // Linefeed
+    // Dokument sagt: "liefert null, wenn nicht geöffnet". In C++ gibt es kein null-String.
+    // Wir geben "" zurück, was im Nutzer-Code so behandelt werden sollte.
+    if (handle == INVALID_HANDLE_VALUE)
+        return string(); // "" ~ „null“ im Dokument
+
+    const unsigned char LF = 0x0A; // '\n'
     string result;
 
-    if (handle == INVALID_HANDLE_VALUE)
-        return result;
-
-    // Klassisch: warte bis '\n' kommt
+    // Blockiere bis '\n'
     while (true) {
-        int ch = read();            // blockiert bis 1 Byte
+        int ch = read(); // nutzt unsere -1-Logik
         if (ch < 0) {
-            // Fehler -> bisheriges Ergebnis zurückgeben
-            return result;
+
+            return string();
         }
         if ((unsigned char)ch == LF) {
             // LF nicht übernehmen -> Zeile fertig
@@ -212,9 +204,9 @@ string Serial::readLine()
         }
         result.push_back((char)ch);
 
-        // Schutz gegen unbeabsichtigt „endlose“ Zeilen
-        if (result.size() > 1 << 20) { // ~1 MB
-            return result;
+        // Sicherheitsnetz gegen Endloszeilen (~1 MB)
+        if (result.size() > (1u << 20)) {
+            return result; // pragmatisch abbrechen
         }
     }
 }
