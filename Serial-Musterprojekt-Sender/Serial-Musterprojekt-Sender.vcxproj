@@ -126,7 +126,7 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="main.cpp" />
+    <ClCompile Include="Serial-Musterprojekt_Sender.cpp" />
     <ClCompile Include="Serial\Serial.cpp" />
   </ItemGroup>
   <ItemGroup>

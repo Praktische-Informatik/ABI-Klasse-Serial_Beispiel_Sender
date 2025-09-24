@@ -30,7 +30,7 @@ char CAN = 0x18; // Cancel (Abbruch der Übertragung)
 int main()
 {
     // COM-Port-Nummer: hier zur Demo fest verdrahtet (statt cin >> port_nr)
-    string portNr = "1";;   // Beispiel: Empfänger auf COM1
+    string portNr = "1";   // Beispiel: Empfänger auf COM1
     //cin >> portNr;
     cout << "COM Port Nummer (Empfaenger): " << portNr << endl;
 

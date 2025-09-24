@@ -15,7 +15,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="main.cpp">
+    <ClCompile Include="Serial-Musterprojekt_Sender.cpp">
       <Filter>Quelldateien</Filter>
     </ClCompile>
     <ClCompile Include="Serial\Serial.cpp">
